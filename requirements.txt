@@ -1,0 +1,13 @@
+accelerate
+transformers
+cuda
+trimesh
+torch
+torchvision
+numpy
+scipy
+pillow
+requests
+tqdm
+matplotlib
+ipywidgets==8.1.*
