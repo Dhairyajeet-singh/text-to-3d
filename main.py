@@ -11,10 +11,16 @@ from shap_e.diffusion.gaussian_diffusion import diffusion_from_config
 from shap_e.models.download import load_model, load_config
 from shap_e.util.notebooks import decode_latent_mesh
 import requests
+import base64
+from dotenv import load_dotenv
+
+load_dotenv()
+
+
 
 app = Flask(__name__)
 CORS(app)
-
+GITHUB_TOKEN = os.getenv("git_key") 
 @app.route("/")
 def home():
     return render_template("home.html")
@@ -61,20 +67,56 @@ def generate_3d(prompt: str, out_path:str = "models/mesh_colored.ply"):
 
     tm = trimesh.Trimesh(vertices=verts, faces=faces, vertex_colors=colors, process=False)
     tm.export(out_path)
-
-    import requests
-
-    file_path= "models/mesh_colored.ply"
-    url = "https://file.io"
-    with open(file_path, 'rb') as f:
-        response = requests.post(url, files={"file": f})
-    os.remove(file_path)
-    if response.status_code == 200:
-        download_url = response.json().get("link")
-        return download_url
-    else:
-        raise Exception(f"Upload failed: {response.text}")
-
+        
+    # Your repository configuration
+    repo_owner = "Dhairyajeet-singh"
+    repo_name = "text-to-3d"
+    github_token=GITHUB_TOKEN
+    file_path = out_path
+    
+    if not os.path.exists(file_path):
+        print(f"File not found: {file_path}")
+        return None
+    
+    try:
+        # Read file content
+        with open(file_path, 'rb') as f:
+            content = base64.b64encode(f.read()).decode()
+        
+        # Create unique filename with timestamp
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        github_path = f"models/mesh_colored_{timestamp}.ply"
+        
+        # GitHub API endpoint
+        url = f"https://api.github.com/repos/{repo_owner}/{repo_name}/contents/{github_path}"
+        
+        headers = {
+            "Authorization": f"token {github_token}",
+            "Accept": "application/vnd.github.v3+json"
+        }
+        
+        data = {
+            "message": f"Upload mesh file {timestamp}",
+            "content": content
+        }
+        
+        response = requests.put(url, json=data, headers=headers)
+        
+        if response.status_code == 201:
+            # Return direct download URL
+            download_url = f"https://raw.githubusercontent.com/{repo_owner}/{repo_name}/main/{github_path}"
+            print(f"File uploaded successfully to GitHub")
+            os.remove("models/mesh_colored.ply")
+            return download_url
+        else:
+            print(f"GitHub upload failed: {response.status_code}")
+            print(response.text)
+            return None
+            
+    except Exception as e:
+        print(f"Error uploading to GitHub: {e}")
+        return None
+        
 
 @app.route("/chatbot.html", methods=["GET", "POST"])
 def chatbot():
@@ -85,12 +127,5 @@ def chatbot():
     return render_template("chatbot.html", output=output)
         
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--run", action="store_true", help="Run the server")
-    parser.add_argument("--debug", type=bool, default=False, help="Enable debug mode")
-    args = parser.parse_args()
-
-    if args.run:
-        print("Starting Flask server...")
-        app.run(debug=args.debug)
+if __name__ == "__main__": 
+    app.run(debug=False, port=5000)
